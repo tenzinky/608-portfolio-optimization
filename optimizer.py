@@ -1,17 +1,3 @@
-"""
-Minimize:  -w^T * s  +  lambda * (w^T * sigma * w)
-Maximize:  w^T * s  -  lambda * (w^T * sigma * w)
-    w = portfolio weights
-    s = ML prediction scores (s_i)
-    sigma = diagonal variance matrix built from risk_vol_3m
-            diag(r_1^2, r_2^2, ..., r_n^2)
-    lambda = risk penalty strength
-
-Constraints:
-    sum(w) = 1       (fully invested)
-    w >= 0           (no short selling)
-    w <= MAX_WEIGHT  (dont overweight any single stock)
-"""
 
 import pandas as pd
 import numpy as np
