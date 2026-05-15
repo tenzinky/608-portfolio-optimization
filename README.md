@@ -252,10 +252,11 @@ Constraints:
 				Tab 2:
 				·choose a optimizer model and lambda value
 				·view cumulative return chart for the optimized portfolio
-				·Inspect monthly portfolio history
-				·Compare all lambda values side by side
-				·View top weighted stocks for the latest month
-				·Compare all three models at the selected lambda
+				·inspect monthly portfolio history
+				·compare all lambda values side by side
+				·view top weighted stocks for the latest month
+				·compare all three models at the selected lambda
+				·inspect SPY benchmark comparison table
 				
 	Generated Outputs
 		The project writes outputs into artifacts/.
