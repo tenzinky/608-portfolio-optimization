@@ -9,13 +9,15 @@ Stock Ranking Project
 		3.Build an ML dataset for a top-20% stock-selection task.
 		4.Train and evaluate classification models.
 		5.Convert model scores into monthly portfolio returns.
-		6.Export metrics, stock recommendations, and plots.
-		7.Present the walk-forward results in a Streamlit app.
+		6.Use ML scores to optimize portfolio weights via mean variance optimization
+		7.Export metrics, stock recommendations, and plots.
+		8.Present the walk-forward results in a Streamlit app.
 
 	Project Goals
 		·Predict which stocks are likely to be in the top 20% by next-month return.
 		·Rank stocks each month by predicted probability.
 		·Form a portfolio from the top-ranked names.
+		·Optimize portfolio weights to mazimize risk-adjusted returns using ML scores
 		·Evaluate both classification quality and portfolio performance.
 		·Compare walk-forward portfolio performance with SPY when benchmark data is available.
 
@@ -165,7 +167,36 @@ Stock Ranking Project
 			·best_month_return
 			·worst_month_return
 			·avg_monthly_picks
+			
+		Portfolio Optimization
+		      [optimizer.py]
 
+			  The optimization module takes the ML prediction scores(s_i) and risk measures (r_i) from the ML pipeline and finds the optimal portfolio weights(w_i) each month using Simplified Mean Variance Optimization. 
+			  Minimize:  -w^T * s  +  lambda * (w^T * sigma * w)
+              Maximize:  w^T * s  -  lambda * (w^T * sigma * w)
+    w = portfolio weights
+    s = ML prediction scores (s_i)
+    sigma = diagonal variance matrix built from risk_vol_3m
+            diag(r_1^2, r_2^2, ..., r_n^2)
+    lambda = risk penalty strength
+
+Constraints:
+    sum(w) = 1       (fully invested)
+    w >= 0           (no short selling)
+    w <= MAX_WEIGHT  (dont overweight any single stock)
+
+	Key Functions: 
+	·build_diagonal_sigma()
+		builds the diagonal variance matrix sigma from risk_vol_3m values
+	·optimize_month()
+		solves the mean-variance optimization for a single month using CVXPY with the CLARABEL 	   solver. Also enforces the three constraints. 
+	·run_one_model()
+		run the optimizer across all 48 months for a single ML model and lambda values. Also, includes a feasibility check.
+	·compute_metrics()
+		computes portfolio performance metrics from the optimization results including cumulative return, annualized Sharpe ratio, win rate, and monthly standard deviation
+	·run_optimizer()
+		coordinates the full optimization run across all three models and lambda values, prints the lambda sweep comparison table, and saves result to optimizer_results.csv
+		
 	Benchmark Comparison
 		[benchmark_module.py]
 
@@ -209,7 +240,8 @@ Stock Ranking Project
 			[streamlit_app.py]
 
 			The app allows an end user to:
-
+			
+				Tab 1
 				·choose a model
 				·choose a target month
 				·view recommended top-rank stocks
@@ -217,6 +249,14 @@ Stock Ranking Project
 				·inspect walk-forward evaluation metrics
 				·inspect SPY benchmark comparison when available
 
+				Tab 2:
+				·choose a optimizer model and lambda value
+				·view cumulative return chart for the optimized portfolio
+				·Inspect monthly portfolio history
+				·Compare all lambda values side by side
+				·View top weighted stocks for the latest month
+				·Compare all three models at the selected lambda
+				
 	Generated Outputs
 		The project writes outputs into artifacts/.
 
@@ -239,6 +279,8 @@ Stock Ranking Project
 					main input file for the optimization part
 				·optimizer_risk_options.csv
 					candidate risk columns that can be used as r_i
+				·optimizer_results.csv
+					optimized portfolio weights and returns for all models and lambdas
 			
 		Plots
 			Stored in artifacts/plots/:
@@ -269,7 +311,10 @@ Stock Ranking Project
 			To force a fresh rebuild:
 
 				python main.py --rebuild-data
-		2. Launch the demo app
+		2. Run the optimizer
+		 		python optimizer.py
+				
+		3. Launch the demo app
 			streamlit run streamlit_app.py
 	
 	Expected Dependencies
@@ -284,11 +329,13 @@ Stock Ranking Project
 			seaborn
 			streamlit
 			xgboost optional
+			cvspy
 			
 	Notes About Current Behavior
 		·The demo is driven by exported artifact CSV files, not by live model training inside Streamlit.
 		·Walk-forward results are the primary user-facing evaluation mode.
 		·The cumulative return comparison plot is currently limited to walk-forward models.
+		·The optimizer must be run after main.py since it depends on optimizer_input.csv
 		·If benchmark download fails, the pipeline skips SPY comparison and still completes.
 		·If the local ML CSV is missing momentum_volume_interaction, main.py backfills it in memory.
 	
@@ -300,4 +347,5 @@ Stock Ranking Project
 			3.[model_module.py]
 			4.[walk_forward_model.py]
 			5.[metrics_module.py]
-			6.[streamlit_app.py]
+			6.[optimizer.py]
+			7.[streamlit_app.py]
