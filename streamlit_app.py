@@ -32,7 +32,6 @@ st.set_page_config(
     layout="wide",
 )
 
-
 @st.cache_data(show_spinner=False)
 def load_demo_data():
     selected_df          = load_selected_stocks()
@@ -82,14 +81,13 @@ def build_performance_chart_data(portfolio_history, benchmark_history):
 
 
 def compute_optimizer_metrics(df):
-    """Compute portfolio performance metrics from optimizer results."""
     if df.empty or "weighted_return" not in df.columns:
         return {}
     monthly = df.groupby("YearMonth")["weighted_return"].sum()
-    cum     = (1 + monthly).prod() - 1
+    cumulative = (1 + monthly).prod() - 1
     sharpe  = monthly.mean() / monthly.std() * (12 ** 0.5) if monthly.std() > 0 else 0
     return {
-        "cumulative_return":  cum,
+        "cumulative_return":  cumulative,
         "avg_monthly_return": monthly.mean(),
         "monthly_std":        monthly.std(),
         "sharpe":             sharpe,
@@ -99,11 +97,22 @@ def compute_optimizer_metrics(df):
     }
 
 
-def build_optimizer_chart(df):
-    """Build cumulative return series from optimizer results."""
+def build_optimizer_chart(df, benchmark_df):
     monthly = df.groupby("YearMonth")["weighted_return"].sum().sort_index()
     cum     = (1 + monthly).cumprod() - 1
-    return cum.reset_index().rename(columns={"weighted_return": "Optimizer Portfolio"}).set_index("YearMonth")
+    chart   = cum.rename("Optimized Portfolio").to_frame()
+
+    if not benchmark_df.empty and "benchmark_cumulative_return" in benchmark_df.columns:
+        spy = (
+            benchmark_df[benchmark_df["benchmark_cumulative_return"].notna()]
+            .drop_duplicates("YearMonth")
+            .set_index("YearMonth")["benchmark_cumulative_return"]
+            .rename("SPY")
+            .sort_index()
+        )
+        chart = chart.join(spy, how="left")
+
+    return chart.sort_index()
 
 
 HERO_STYLE = """
@@ -135,6 +144,7 @@ HERO_STYLE = """
 }
 </style>
 """
+
 
 def render_ml_tab(selected_df, metrics_df, portfolio_df, benchmark_df, benchmark_summary_df):
     models = available_models(selected_df)
@@ -233,10 +243,10 @@ def render_ml_tab(selected_df, metrics_df, portfolio_df, benchmark_df, benchmark
             st.dataframe(benchmark_table, use_container_width=True, hide_index=True)
 
 
-def render_optimizer_tab(opt_df):
+def render_optimizertab(opt_df, benchmark_df):
     if opt_df.empty:
         st.warning(
-            "No optimizer results found. Run `python optimizer.py` first to generate them."
+            "If no optimizer results found, run `python optimizer.py` first to generate them."
         )
         return
 
@@ -247,7 +257,7 @@ def render_optimizer_tab(opt_df):
     lambdas = sorted(opt_df["lambda"].unique())
 
     opt_model  = st.sidebar.selectbox("Optimizer Model",  models,  key="opt_model")
-    opt_lambda = st.sidebar.selectbox("Lambda (λ)",       lambdas, key="opt_lambda")
+    opt_lambda = st.sidebar.selectbox("Lambda",       lambdas, key="opt_lambda")
 
     filtered = opt_df[
         (opt_df["model_name"] == opt_model) &
@@ -270,11 +280,28 @@ def render_optimizer_tab(opt_df):
     left_col, right_col = st.columns([1.5, 1], gap="large")
 
     with left_col:
-        st.subheader("Cumulative Portfolio Return")
-        chart_data = build_optimizer_chart(filtered)
+        
+        st.subheader("Cumulative Portfolio Return vs SPY")
+        chart_data = build_optimizer_chart(filtered, benchmark_df)
         st.line_chart(chart_data, use_container_width=True, height=320)
 
-    
+       
+        if not benchmark_df.empty and "benchmark_cumulative_return" in benchmark_df.columns:
+            spy_cum = benchmark_df["benchmark_cumulative_return"].dropna().iloc[-1] if not benchmark_df["benchmark_cumulative_return"].dropna().empty else None
+            opt_cum = m.get("cumulative_return")
+            excess  = (opt_cum - spy_cum) if (opt_cum is not None and spy_cum is not None) else None
+            st.subheader("Benchmark Comparison")
+            bm_table = pd.DataFrame(
+                [
+                    ("SPY Cumulative Return",       format_pct(spy_cum)),
+                    ("Optimizer Cumulative Return", format_pct(opt_cum)),
+                    ("Return vs SPY",        format_pct(excess)),
+                ],
+                columns=["Metric", "Value"],
+            )
+            st.dataframe(bm_table, use_container_width=True, hide_index=True)
+
+        
         st.subheader("Monthly Portfolio History")
         monthly = (
             filtered.groupby("YearMonth")["weighted_return"]
@@ -317,6 +344,7 @@ def render_optimizer_tab(opt_df):
         latest_df["weight"]      = latest_df["weight"].map(format_pct)
         st.dataframe(latest_df, use_container_width=True, hide_index=True)
 
+       
         st.subheader(f"All Models at λ = {opt_lambda}")
         model_rows = []
         for model in models:
@@ -332,6 +360,7 @@ def render_optimizer_tab(opt_df):
                 "Win Rate":    format_pct(mm.get("win_rate")),
             })
         st.dataframe(pd.DataFrame(model_rows), use_container_width=True, hide_index=True)
+
 
 
 def main():
@@ -369,7 +398,7 @@ def main():
         )
 
     with tab2:
-        render_optimizer_tab(opt_df)
+        render_optimizertab(opt_df, benchmark_df)
 
 
 if __name__ == "__main__":
